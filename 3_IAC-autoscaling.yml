@@ -1,0 +1,177 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description:
+  YAML file Untuk Mengelola Launch Template, Autoscaling group, scaling policy, Load Balancer, Target Group, dan Cloudwatch alarm
+
+Parameters:
+  ImageID:
+    Type: String
+    Description: AMI ID for launch template Autoscaling
+    Default: ami-0631e006cf5178d2e
+
+Resources:
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: LaunchTemplate
+      LaunchTemplateData:
+        ImageId: !Ref ImageID
+        InstanceType: t2.micro 
+        SecurityGroupIds:
+          - !ImportValue IAC-Instance-EC2-SG
+        Monitoring:
+          Enabled: true
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash
+            sudo systemctl start httpd  
+            sudo systemctl start php-fpm 
+
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: AutoScaling-Group
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      MinSize: '1'
+      MaxSize: '4'
+      DesiredCapacity: '1'
+      VPCZoneIdentifier: 
+        - !ImportValue IAC-Networking-Subnet-Public-A-Id
+        - !ImportValue IAC-Networking-Subnet-Public-B-Id
+      TargetGroupARNs:
+        - !Ref TargetGroup
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: TargetGroup
+      Port: 80
+      Protocol: HTTP
+      VpcId: !ImportValue IAC-Networking-VPCName
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: LoadBalancer
+      Subnets:
+        - !ImportValue IAC-Networking-Subnet-Public-A-Id
+        - !ImportValue IAC-Networking-Subnet-Public-B-Id
+      SecurityGroups:
+        - !ImportValue IAC-Instance-EC2-SG
+      Type: application
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '60'
+      Tags:
+        - Key: Name
+          Value: LoadBalancer
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  CPUAlarm25:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      Namespace: "AWS/EC2"
+      MetricName: "CPUUtilization"
+      Dimensions:
+        - Name: "AutoScalingGroupName"
+          Value: !Ref AutoScalingGroup
+      Statistic: "Average"
+      Period: 60 
+      EvaluationPeriods: 4
+      Threshold: 25
+      ComparisonOperator: "LessThanOrEqualToThreshold"
+      AlarmActions:
+        - !Ref ScaleDownPolicy
+
+  CPUAlarm50:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      Namespace: "AWS/EC2"
+      MetricName: "CPUUtilization"
+      Dimensions:
+        - Name: "AutoScalingGroupName"
+          Value: !Ref AutoScalingGroup
+      Statistic: "Average"
+      Period: 60 
+      EvaluationPeriods: 1
+      Threshold: 50
+      ComparisonOperator: "GreaterThanOrEqualToThreshold"
+      AlarmActions:
+        - !Ref ScaleUpPolicy50
+
+  CPUAlarm70:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      Namespace: "AWS/EC2"
+      MetricName: "CPUUtilization"
+      Dimensions:
+        - Name: "AutoScalingGroupName"
+          Value: !Ref AutoScalingGroup
+      Statistic: "Average"
+      Period: 60 
+      EvaluationPeriods: 1
+      Threshold: 70
+      ComparisonOperator: "GreaterThanOrEqualToThreshold"
+      AlarmActions:
+        - !Ref ScaleUpPolicy70
+
+  CPUAlarm90:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      Namespace: "AWS/EC2"
+      MetricName: "CPUUtilization"
+      Dimensions:
+        - Name: "AutoScalingGroupName"
+          Value: !Ref AutoScalingGroup
+      Statistic: "Average"
+      Period: 60 
+      EvaluationPeriods: 1
+      Threshold: 90
+      ComparisonOperator: "GreaterThanOrEqualToThreshold"
+      AlarmActions:
+        - !Ref ScaleUpPolicy90
+
+  ScaleDownPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ExactCapacity
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      Cooldown: '120'
+      ScalingAdjustment: 1
+
+  ScaleUpPolicy50:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      Cooldown: '120'
+      ScalingAdjustment: '1'
+
+  ScaleUpPolicy70:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      Cooldown: '120'
+      ScalingAdjustment: '1'
+
+  ScaleUpPolicy90:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      Cooldown: '120'
+      ScalingAdjustment: '1'
+
+# aws cloudformation deploy --template-file 3_IAC-autoscaling.yml --stack-name IAC-Autoscaling --region ap-southeast-1

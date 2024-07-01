@@ -1,0 +1,107 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description:
+  YAML file Untuk Membuat Security Group, RDS, dan EC2 Instance
+
+Parameters:
+  RdsUsername:
+    Type: String
+    Description: Username MySQL pada server RDS
+    Default: admin
+  RdsPassword:
+    Type: String
+    Description: Password MySQL pada server RDS
+    Default: 12345678
+
+Resources:
+##### SecurityGroup, SubnetGroup, RDS ####
+  RDSSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'Allow SSH and HTTP traffic'
+      SecurityGroupIngress: 
+        - CidrIp: '100.220.0.0/27'
+          IpProtocol: 'tcp'
+          FromPort: 3306
+          ToPort: 3306
+      VpcId: !ImportValue IAC-Networking-VPCName
+      Tags:
+        - Key: 'Name'
+          Value: 'RDS-Security-Group'
+
+  RDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: MyDBSubnetGroup
+      DBSubnetGroupDescription: Subnet group for RDS
+      SubnetIds:
+        - !ImportValue IAC-Networking-Subnet-Private-A-Id
+        - !ImportValue IAC-Networking-Subnet-Private-B-Id
+
+  RDS:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: RDS-DB
+      DBInstanceClass: db.t2.micro
+      VPCSecurityGroups:
+        -  !GetAtt RDSSecurityGroup.GroupId
+      Engine: mysql
+      EngineVersion: '8.0'
+      AllocatedStorage: 20
+      DBSubnetGroupName: !Ref RDSSubnetGroup
+      MasterUsername: !Ref RdsUsername
+      MasterUserPassword: !Ref RdsPassword
+      MultiAZ: false
+      
+
+#####  SecurityGroup, EC2  ####
+  EC2SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'Allow SSH and HTTP traffic'
+      SecurityGroupIngress:
+        - CidrIp: '0.0.0.0/0'
+          IpProtocol: 'tcp'
+          FromPort: 22
+          ToPort: 22
+        - CidrIp: '0.0.0.0/0'
+          IpProtocol: 'tcp'
+          FromPort: 80
+          ToPort: 80
+      VpcId: !ImportValue IAC-Networking-VPCName
+      Tags:
+        - Key: 'Name'
+          Value: 'EC2-Security-Group'
+ 
+  EC2Master:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: 'ami-08db74f389216e7e0' 
+      InstanceType: 't2.micro' 
+      KeyName: 'az-linux'
+      SubnetId: !ImportValue IAC-Networking-Subnet-Public-A-Id
+      SecurityGroupIds: 
+        - !Ref EC2SecurityGroup
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          sudo yum update -y  
+          sudo amazon-linux-extras enable php7.3 -y  
+          sudo yum clean metadata  
+          sudo yum install  -y php php-{pear,cgi,common,curl,mbstring,gd,mysqlnd,gettext,bcmath,json,xml,fpm,intl,zip,imap}  
+          sudo yum install  -y git 
+          sudo chown -R ec2-user:apache /var/www
+          sudo chmod 2775 /var/www
+          find /var/www -type d -exec sudo chmod 2775 {} \;
+      Tags:
+        - Key: 'Name'
+          Value: 'EC2-Master'
+
+Outputs:
+  EC2SecGrup:
+    Description: EC2 Security Group
+    Value: !Ref EC2SecurityGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-EC2-SG"
+
+  
+# aws cloudformation deploy --template-file 2_IAC-instance.yml --stack-name IAC-Instance --region ap-southeast-1

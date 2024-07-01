@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description:
+  YAML file untuk membuat dan mengelola VPC, Subnet, Internet Gateway, dan Route Table
+
+Parameters:
+  AvailabilityZoneA:
+    Description: Enter the Availability Zone A.
+    Type: String
+    Default: ap-southeast-1a
+
+  AvailabilityZoneB:
+    Description: Enter the Availability Zone B.
+    Type: String
+    Default: ap-southeast-1b
+
+Resources:
+##### VPC & INTERNET GATEWAY ####
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 100.220.0.0/26
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: Core-VPC
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: Core-IGW
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+##### SUBNET & ROUTE TABLE PUBLIC ####
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref AvailabilityZoneA
+      CidrBlock: 100.220.0.0/28
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: Subnet-Public-A
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: 100.220.0.16/28
+      CidrBlock: !Ref PublicSubnetBCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: Subnet-Public-B
+
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: 'Name'
+          Value: 'Public Route Table'
+
+  PublicRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref 'PublicRouteTable'
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref 'InternetGateway'
+
+  PublicSubnetAAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref 'PublicSubnetA'
+      RouteTableId: !Ref 'PublicRouteTable'
+
+  PublicSubnetBAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref 'PublicSubnetB'
+      RouteTableId: !Ref 'PublicRouteTable'
+
+### SUBNET & ROUTE TABLE PRIVATE ###
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref AvailabilityZoneA
+      CidrBlock: 100.220.0.32/28
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: Subnet-Private-A
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref AvailabilityZoneB
+      CidrBlock: 100.220.0.48/28
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: Subnet-Private-B
+
+  PrivateRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+        - Key: 'Name'
+          Value: 'PrivateRouteTable'
+
+  PrivateSubnetAAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref 'PrivateSubnetA'
+      RouteTableId: !Ref 'PrivateRouteTable'
+
+  PrivateSubnetBAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref 'PrivateSubnetB'
+      RouteTableId: !Ref 'PrivateRouteTable'
+
+Outputs:
+  VPCName:
+    Description: Name of the VPC
+    Value: !Ref VPC
+    Export:
+      Name: !Sub "${AWS::StackName}-VPCName"
+
+  PublicSubnetIdA:
+    Description: ID of the Public Subnet A
+    Value: !Ref PublicSubnetA
+    Export:
+      Name: !Sub "${AWS::StackName}-Subnet-Public-A-Id"
+
+  PublicSubnetIdB:
+    Description: ID of the Public Subnet B
+    Value: !Ref PublicSubnetB
+    Export:
+      Name: !Sub "${AWS::StackName}-Subnet-Public-B-Id"
+
+  PrivateSubnetIdA:
+    Description: ID of the Private Subnet A
+    Value: !Ref PublicSubnetA
+    Export:
+      Name: !Sub "${AWS::StackName}-Subnet-Private-A-Id"
+
+  PrivateSubnetIdB:
+    Description: ID of the Private Subnet B
+    Value: !Ref PublicSubnetB
+    Export:
+      Name: !Sub "${AWS::StackName}-Subnet-Private-B-Id"
+
+###  Command CLI  ###
+# aws cloudformation deploy --template-file 1_IAC-network.yml --stack-name IAC-Networking --region ap-southeast-1
