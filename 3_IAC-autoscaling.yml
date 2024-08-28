@@ -173,5 +173,3 @@ Resources:
       AutoScalingGroupName: !Ref AutoScalingGroup
       Cooldown: '120'
       ScalingAdjustment: '1'
-
-# aws cloudformation deploy --template-file 3_IAC-autoscaling.yml --stack-name IAC-Autoscaling --region ap-southeast-1
